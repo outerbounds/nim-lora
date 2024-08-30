@@ -186,13 +186,13 @@ def save_model(args, trainer, dirname="final", merge_dirname="final_merged_check
     if args.merge:
         """
         This conditional block merges the LoRA adapter with the original model weights.
-        NOTE: For use with NIM, we do not need to do the merge, the adapter_config.json 
+        NOTE: For use with NIM, we do not need to do the merge.
         """
         model = AutoPeftModelForCausalLM.from_pretrained(output_dir, device_map="auto", torch_dtype=torch.bfloat16)
         model = model.merge_and_unload()
         output_merged_dir = os.path.join(args.output_dir, merge_dirname)
         model.save_pretrained(output_merged_dir, safe_serialization=True)
-        return output_dir, merge_dirname
+        return output_dir, output_merged_dir
     else:
         return output_dir, None
 

@@ -1,9 +1,21 @@
 import os
 import json
-from metaflow import FlowSpec, step, IncludeFile, Parameter, secrets, resources, retry, pypi, huggingface_card, nvidia, S3
+from metaflow import FlowSpec, step, IncludeFile, Parameter, secrets, resources, secrets, retry, pypi_base, huggingface_card, kubernetes, S3
 from metaflow.profilers import gpu_profile
 from exceptions import GatedRepoError, GATED_HF_ORGS
 
+@pypi_base(packages={
+    'datasets': '',
+    'torch': '',
+    'transformers': '',
+    'peft': '',
+    'trl': '',
+    'accelerate': '',
+    'bitsandbytes': '',
+    'sentencepiece': '',
+    'safetensors': '',
+    'requests': ''
+})
 class FinetuneLlama3LoRA(FlowSpec):
 
     script_args_file = IncludeFile(
@@ -19,7 +31,6 @@ class FinetuneLlama3LoRA(FlowSpec):
         help="Flag for a smoke test"
     )
 
-    @pypi(disabled=True)
     @secrets(sources=["huggingface-token"])
     @step
     def start(self):
@@ -33,25 +44,17 @@ class FinetuneLlama3LoRA(FlowSpec):
             raise GatedRepoError(self.script_args.dataset_name)
         self.next(self.sft)
 
-    @pypi(packages={
-        'datasets': '',
-        'torch': '',
-        'transformers': '',
-        'peft': '',
-        'trl': '',
-        'accelerate': '',
-        'bitsandbytes': '',
-        'sentencepiece': '',
-        'safetensors': ''
-    })
     @gpu_profile(interval=1)
     @huggingface_card
-    @nvidia
+    @secrets(sources=["huggingface-token"])
+    @kubernetes(gpu=1)
     @step
     def sft(self):
+        import os
         from my_peft_tools import create_model, create_trainer, save_model, get_tar_bytes
         import huggingface_hub
-        huggingface_hub.login('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')
+
+        huggingface_hub.login(os.environ['HF_TOKEN']) # contained in hugginface-token secret
         model, tokenizer = create_model(self.script_args)
         trainer = create_trainer(self.script_args, tokenizer, model, smoke=self.smoke, card=True)
         trainer.train()
@@ -62,7 +65,6 @@ class FinetuneLlama3LoRA(FlowSpec):
                 s3.put('lora_merged.tar.gz', get_tar_bytes(merge_output_dirname))
         self.next(self.end)
 
-    @pypi(disabled=True)
     @step
     def end(self):
         print("Training completed successfully!")
